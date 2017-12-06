@@ -20,7 +20,9 @@ To personalize:
 4. Generate the [Tunes.pdf] in the `dervied` directory: `$ make`
 
 
-![Tunes](derived/Tunes.pdf)
+## Current Tunes File
+
+[Tunes](derived/Tunes.pdf)
 
 
 <!-- links -->
