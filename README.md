@@ -9,6 +9,8 @@ set of tunes.  The toolset generates sheet music for single tunes or allows you
 to create sets.  If the latter, it will assemble sets in groups.
 
 
+
+
 ## Usage
 
 To personalize:
@@ -33,6 +35,11 @@ clunky but I haven't had time to stream line it.  Maybe you do!  If so I could
 use you help.
 
 
+## Tunes File
+
+Click [here](derived/Tunes.pdf) to view the file.
+
+
 ## Process
 
 It generates the [Tunes.pdf] from the following `make` target/dependency
@@ -46,9 +53,13 @@ process:
 5. Finally, create the [PDF] from the postscript file.
 
 
-## Tunes File
+## Known Issues
 
-Click [here](derived/Tunes.pdf) to view the file.
+Currently the table of contents for tunes doesn't link properly to the page it
+referrs.  This is some Latex mystery to me ATM, but I feel it might have
+something to do with `\addcontentsline` used in a `\newcommand`.  Please let me
+know if you figure it out!
+
 
 
 <!-- links -->
