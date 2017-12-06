@@ -3,6 +3,7 @@
 
 # paths
 TARG_DIR=	$(abspath target)
+DERIVED_DIR=	derived
 MKTUNETEX=	src/python/mktunetex.py
 DATA_DIR=	data
 TUNE_SPREAD=	$(abspath $(DATA_DIR)/tune-list.numbers)
@@ -19,15 +20,16 @@ TEX_PDF=	$(TARG_DIR)/$(TEX).pdf
 TEX=		Tunes
 LAT=		$(TPATH) latex
 
-all:		pdf
+all:		derived
 
 .PHONY:		info
 info:
 		@echo "eps: $(ABC_EPS)"
 
-.PHONY:
-pdf:		$(TEX_PDF)
-
+.PHONY:	derived
+derived:	$(TEX_PDF)
+		mkdir -p $(DERIVED_DIR)
+		cp $(TEX_PDF) $(DERIVED_DIR)
 
 $(TARG_DIR):
 		mkdir -p $(TARG_DIR)
@@ -43,7 +45,6 @@ $(TEX_TARG):	$(TARG_DIR) $(TEX_ORG)
 		$(MKTUNETEX) $(TEX_SRC) $(ABC_SRC_DIR) $(TUNE_SPREAD) $(TEX_TARG) $(TARG_DIR)
 
 $(TEX_DVI):	$(TARG_DIR) $(ABC_EPS) $(TEX_TARG)
-		( cd $(TARG_DIR) ; $(LAT) $(TEX).tex )
 		( cd $(TARG_DIR) ; $(LAT) $(TEX).tex )
 		( cd $(TARG_DIR) ; $(LAT) $(TEX).tex )
 

@@ -1,6 +1,8 @@
 #!/bin/sh
 
 NUM=$1
+ABC=../../data/abc/
+SS=./perl/scrapesession
 
 if [ -z "$NUM" ] ; then
     echo "usage: $0 <session id>"
@@ -8,8 +10,5 @@ if [ -z "$NUM" ] ; then
 fi
 
 echo "add this to tunes-list.numbers:"
-#./scrapesession -s $NUM $NUM
-./scrapesession $NUM
-
-#./scrapesession -s $NUM -f abc $NUM > ../abc/$NUM.abc
-./scrapesession -f abc $NUM > ../abc/$NUM.abc
+${SS} $NUM
+${SS} -f abc $NUM > ${ABC}/$NUM.abc
