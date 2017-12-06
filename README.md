@@ -33,6 +33,19 @@ clunky but I haven't had time to stream line it.  Maybe you do!  If so I could
 use you help.
 
 
+## Process
+
+It generates the [Tunes.pdf] from the following `make` target/dependency
+process:
+
+1. Convert ABC text files to Encapsulated Postscript Files (`.abc` to `.eps`).
+2. Generate the Latex file using [tex generator], which reads the
+   [tunes spreadsheet] file to create the sheet music entries.
+3. Create a `.dvi` from the Latex source
+4. Create the postscript `.ps` from the `.dvi`.
+5. Finally, create the [PDF] from the postscript file.
+
+
 ## Tunes File
 
 Click [here](derived/Tunes.pdf) to view the file.

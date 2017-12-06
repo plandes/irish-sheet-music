@@ -10,15 +10,13 @@ TUNE_SPREAD=	$(abspath $(DATA_DIR)/tune-list.numbers)
 ABC_SRC_DIR=	$(abspath $(DATA_DIR)/abc)
 ABC_SRC=	$(notdir $(wildcard $(ABC_SRC_DIR)/*))
 ABC_EPS=	$(patsubst %.abc,%.eps,$(addprefix $(TARG_DIR)/,$(ABC_SRC)))
+TEX=		Tunes
 TEX_SRC=	src/tex/$(TEX).tex
 TEX_TARG=	$(TARG_DIR)/$(TEX).tex
 TEX_DVI=	$(TARG_DIR)/$(TEX).dvi
 TEX_PS=		$(TARG_DIR)/$(TEX).ps
 TEX_PDF=	$(TARG_DIR)/$(TEX).pdf
-
-# vars
-TEX=		Tunes
-LAT=		$(TPATH) latex
+LAT=		latex
 
 all:		derived
 
