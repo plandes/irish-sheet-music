@@ -1,0 +1,143 @@
+\documentclass[12pt]{article}
+\setlength{\evensidemargin}{0pt}
+\setlength{\oddsidemargin}{0pt}
+\setlength{\textwidth}{6.8in}
+\setlength{\textheight}{9in}
+\setlength{\topmargin}{-.8in}
+
+%\usepackage{fancyhdr}
+%\pagestyle{fancy}
+%\lhead{\thetitle}
+%\chead{}
+%\rhead{\thesubject}
+%\lfoot{}
+%\cfoot{\thepage}
+%\rfoot{}
+
+\newcommand{\thetitle}{Paul's Traditional Irish Sets}
+
+%% header
+% at least one now comes from tune finder (re-purpose ``author'')
+\newcommand{\theauthor}{Paul Landes}
+
+%\author{\theauthor}
+
+\title{{\bf \thetitle} \\
+{\small Sources: \href{http://thesession.org}{TheSession.org} and \href{http://trillian.mit.edu/~jc/cgi/abc/tunefind}{Tunefinder}} \\
+{\normalsize \theauthor}
+}
+\date{\vspace{-5ex}}
+
+%% font
+\usepackage{tgheros}
+\renewcommand*\familydefault{\sfdefault} %% Only if the base font of the document is to be sans serif
+\usepackage[T1]{fontenc}
+
+%% margins
+\addtolength{\oddsidemargin}{-.30in}
+
+%% arith for lengths
+\usepackage{calc}
+
+%% more colors
+\usepackage[usenames,dvipsnames]{xcolor}
+
+\usepackage{graphicx}
+\usepackage[
+    dvips,
+    dvipdfm,
+    bookmarks,
+    linktocpage,
+    colorlinks=true,
+    urlcolor=Blue,
+    pdftitle={\thetitle}, pdfauthor={\theauthor}
+]
+{hyperref}
+
+%% curb the ``too many floats'' error
+\usepackage{etex}
+\usepackage{morefloats}
+
+%% tables that span pages
+\usepackage{tabularx}
+\setlength{\extrarowheight}{0pt}
+\usepackage{longtable}
+
+\renewcommand{\contentsname}{Tunes}
+\renewcommand{\listfigurename}{Sets}
+
+%# lengths frames/boxes
+\newlength{\tunetableindent}
+\setlength{\tunetableindent}{7pt}
+\newlength{\tunetextwidth}
+\setlength{\tunetextwidth}{\textwidth-\tunetableindent}
+\newlength{\tunetitlelength}
+\setlength{\tunetitlelength}{5in}
+\newlength{\tuneinfolength}
+\setlength{\tuneinfolength}{\tunetextwidth-\tunetitlelength-2cm}
+\newlength{\tuneheadervspace}
+\setlength{\tuneheadervspace}{22pt}
+\newlength{\tunesmindent}
+\setlength{\tunesmindent}{\tunetableindent-2pt}
+
+%% minipage (page in a page non-floating with frames around)
+\usepackage{boxedminipage}
+
+\newcommand{\abcinc}[8]{%
+\noindent%
+\hspace{\tunetableindent}
+\begin{minipage}[t]{\tunetextwidth+5pt}
+\begin{minipage}[t]{\tunetextwidth+5pt}
+\setlength{\fboxrule}{0pt}
+\begin{boxedminipage}[t]{\tunetitlelength}
+{\large \textbf{\href{#7}{#4}}}\\
+{\footnotesize \it #8}
+\end{boxedminipage}
+\hfill
+\setlength{\fboxrule}{.5pt}
+\begin{boxedminipage}[t]{\tuneinfolength}
+\flushright%
+{\small #5}\\
+{\small #6}
+\end{boxedminipage}
+\end{minipage}
+
+\vspace{-\tuneheadervspace}%
+\hspace{-\tunesmindent}%
+\noindent\includegraphics[width=\tunetextwidth+19pt]{#2}
+\hspace{\fill}
+\end{minipage}
+\addcontentsline{toc}{subsection}{#3}%
+}
+
+\newcommand{\abcincs}[8]{%
+\hspace{-\tunetableindent}\abcinc{#1}{#2}{#3}{#4}{#5}{#6}{#7}{#8} \\
+}
+
+\newcommand{\tuneset}[2]{%
+\begin{longtable}{|l|}
+\hline%
+\rule{0pt}{20pt}%
+\makebox[\tunetextwidth][c]{\Large \textit{\textbf{#1}}}\\
+\endfirsthead%
+\endhead%
+\endfoot%
+\endlastfoot%
+\setlength{\leftmargin}{\tunetableindent}%
+\rule{0pt}{15pt}%
+#2
+\hline
+\end{longtable}
+\addcontentsline{lof}{subsection}{#1}%
+}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\listoffigures
+\newpage
+
+%{epstunes}%
+
+\end{document}

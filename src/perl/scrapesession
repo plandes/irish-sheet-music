@@ -1,0 +1,511 @@
+#!/usr/bin/perl
+# $Id: $
+
+# Copyright (C) 2010 Paul Landes
+# Written by Paul Landes <paullandes at airpost dot net> 06/17/2010
+
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program; see the file COPYING.  If not, write to the
+# Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+# Boston, MA 02111-1307, USA.
+
+# Commentary: scrape ABC info from the session.org
+
+use strict;
+use List::MoreUtils qw/ uniq /;
+use Getopt::Long;
+use Pod::Usage;
+use XML::LibXML;
+use XML::LibXML::XPathContext;
+use HTML::TreeBuilder::XPath;
+use Music::ABC::Archive;
+use IO::String;
+use Encode;
+
+# program name, used for usage, etc.
+our $PROG = "scrapesession";
+our $VERSION;
+BEGIN {
+  my $temp = '$Revision: 0.1 $';
+  ($temp) = ( $temp =~ /^\$Revision\:\ (.*?)\ \$$/ );
+  $VERSION = $temp;
+}
+
+## xpaths: probably will have to be updated somewhat frequently
+#old
+#our $SEARCH_URL = q^"http://www.thesession.org/index.php/search?q=${pattern}&start=0&scope=The+Session"^;
+#our $SEARCH_XPATH = q{/x:html/x:body//x:div[@id="searchresults"]/x:ul/x:li/x:a/@href};
+#our $SEARCH_REGEXP = q/href="(http:\/\/www.thesession.org\/tunes\/display(?:.php)?\/\d+)"/;
+
+our $SITE = q{"thesession.org"};
+our $DISPLAY_URL = q{"https://thesession.org/tunes/${tuneId}?format=xml"};
+our $SEARCH_URL = q{"http://thesession.org/tunes/search?format=xml&q=${pattern}"};
+our $ABC_CONTENT_XPATH = q{"/document/settings/setting[id=$settingId]/abc"};
+our $SEARCH_ID_XPATH = q{/document/tunes/tune/id/text()};
+our $SETTINGS_ID_XPATH = q{/document/settings/setting/id/text()};
+our $TUNE_ID_XPATH = q{/document/id/text()};
+our @ABC_FIELD_TO_XML_TUNE =
+  (
+   [ 'display-name', '/document/name/text()', 'T' ],
+   [ 'key', '/document/settings/setting[id=$settingId]/key', 'K' ],
+   [ 'type', '/document/type/text()', 'R' ],
+   );
+our $OPS;
+
+sub parseABC {
+  my ($abcContent) = @_;
+  my $io = IO::String->new($abcContent);
+  tie *IO, 'IO::String';
+  my $abc = Music::ABC::Archive->new();
+  $abc->{fh} = $io;
+
+  my @songs = $abc->list_by_title();
+  my @keys = qw(display-name sn type meter key titles-aref);
+  my @vals = map { if (ref($_)) { $_; } else { /^\s*(.+?)\s*$/; } } @{$songs[0]};
+  my $ret = { abc_obj => $abc, raw => $abcContent };
+  for(my $i = 0; $i <= $#keys; $i++) { $ret->{$keys[$i]} = $vals[$i]; }
+  return $ret;
+}
+
+sub encodeAndClean {
+  my ($doc) = @_;
+  my $uni = Encode::encode("utf8", $doc);
+
+  $uni = join("\n", map {
+    s/&/&amp;/;
+    $_;
+  } split(/\n/, $uni));
+
+  return $uni;
+}
+
+sub selectByXPath {
+  my ($doc, $xpath, $isSingle, $desc) = @_;
+
+  my $p = XML::LibXML->new();
+  my $doc = $p->parse_string($doc);
+  my $xc = XML::LibXML::XPathContext->new($doc->documentElement());
+  if ($isSingle) {
+    my $ret = $xc->findvalue($xpath);
+    death("couldn't locate $desc (xpath=$xpath)", 1) if (length($ret) == 0);
+    return ($ret);
+  } else {
+    @_ = map { $_->toString; } @{$xc->findnodes($xpath)};
+    death("couldn't locate $desc (xpath=$xpath)", 1) if (scalar(@_) == 0);
+    return @_;
+  }
+}
+
+sub parseABCFromXML {
+  my ($doc, $settingId) = @_;
+  my @settingIds = selectByXPath($doc, $SETTINGS_ID_XPATH, 0, 'setting ids');
+  my $tuneId = selectByXPath($doc, $TUNE_ID_XPATH, 1, 'tune id');
+
+  #print "num: ", scalar(@settingIds), "\n";
+  #print "seciton ids: ", join("\n", @settingIds);
+  #exit 0;
+  #print "SETTING ID: $settingId\n";
+
+  if (scalar(@settingIds) == 0) {
+    death("no settings associated with tune");
+  } elsif ((!(defined $settingId)) && (scalar(@settingIds) > 1)) {
+    if ((scalar(@settingIds) == 2) && (@settingIds[0] == $tuneId)) {
+      $settingId = $tuneId;
+    } else {
+      death("multiple settings associated with tune--use -s with one of " . join(' ', @settingIds));
+    }
+  }
+
+  my $xpath = eval($ABC_CONTENT_XPATH);
+  $settingId = $settingIds[0] if (!(defined $settingId));
+  @_ = selectByXPath($doc, $xpath, 1, 'abc (section) content');
+  my $abcStr = @_[0];
+  lg("abc: <$abcStr>", 2);
+  my $abc = parseABC($abcStr);
+
+  for my $entry (@ABC_FIELD_TO_XML_TUNE) {
+    my ($key, $xpath, $abcField)  = @$entry;
+    if (!(defined $abc->{$key})) {
+      my $xpath = eval('"' . $xpath . '"');
+      #print "XP: $xpath => ", selectByXPath($doc, $xpath, 1, "abc key $key"), "\n";
+      my $xmlVal = selectByXPath($doc, $xpath, 1, "abc key $key");
+      if (defined $xmlVal) {
+	$abc->{$key} = $xmlVal;
+	$abc->{raw} = "$abcField: $xmlVal\n" . $abc->{raw};
+      }
+    }
+  }
+
+  $abc->{raw} = "X: 1\n" . $abc->{raw} if (!($abc->{raw} =~ /^X:/m));
+
+  return $abc;
+}
+
+sub stripDoctype {
+  my ($doc) = @_;
+  my $ret;
+  foreach (split(/\n/, $doc)) {
+    next if (/^<!DOCTYPE/);
+    $ret .= $_ . "\n";
+  }
+  return $ret;
+}
+
+sub fetchURL {
+  my ($url) = @_;
+  use LWP::Simple;
+  lg("fetching URL: $url");
+#  my $content = LWP::Simple::get($url);
+  my $content = fetchURLNoCert($url);
+  death("couldn't download URL $url") unless defined $content;
+  return stripDoctype($content);
+}
+
+sub fetchURLNoCert {
+  my ($url) = @_;
+  use warnings;
+  use LWP::UserAgent;
+  my $ua = new LWP::UserAgent(ssl_opts => { verify_hostname => 0 });
+  $ua->timeout(10);
+  $ua->env_proxy;
+  my $res = $ua->get($url);
+
+  lg("code: " . $res->code);
+  lg("message <" . $res->message . ">");
+  my $content = $res->content;
+  lg("content <<$content>>", 3);
+
+  if ($res->is_success) {
+    $content = $1 if ($content =~ /^(.*)0\s+$/s);
+    return $content;
+  } else {
+    die death("couldn't download url: " . $res->status_line);
+  }
+}
+
+sub fetchFromSessionByURL {
+  return parseABCFromXML(fetchURL(@_[0]), @_[1]);
+}
+
+sub formatSessionURL {
+  my $tuneId = @_[0];
+  return eval($DISPLAY_URL);
+}
+
+sub getIdsByTitle {
+  my ($pattern) = @_;
+  $pattern =~ s/([^A-Za-z0-9])/sprintf("%%%02X", ord($1))/seg;
+  my $url = eval($SEARCH_URL);
+  # FIX
+  $url = 'file:///Users/landes/tmp/search.xml';
+  $_ = fetchURL($url);
+
+  s/&ndash;//gm;
+  s/&middot;//gm;
+
+  @_ = selectByXPath($_, $SEARCH_ID_XPATH, 0, 'search results');
+  #@_ = grep(!/^$/, map { /$SEARCH_REGEXP/; $1 } @_);
+  @_ = uniq @_;
+  return @_;
+}
+
+
+sub createXML {
+  my ($abcStruct) = @_;
+
+  my $doc = XML::LibXML::Document->new();
+  my $root = $doc->createElement('abc');
+  $doc->setDocumentElement($root);
+
+  for my $key (qw(display-name sn type meter key)) {
+    my $elem = $doc->createElement($key);
+    #$elem->setAttribute('href', $camelid_links{$item}->{url});
+    my $text = XML::LibXML::Text->new($abcStruct->{$key});
+    $elem->appendChild($text);
+    $root->appendChild($elem);
+  }
+
+  return $doc;
+}
+
+
+##
+# Parse and (optionally) validate command line options (ala @ARGV).
+# Return an array of a hash reference (options) and an array reference
+# (remaining command line parameters).
+sub parseOptions {
+  my (@extraParams, $error);
+  my %options = ( whine => 0, format => 'tab' );
+
+  if ( !GetOptions(\%options, 'help', 'version',
+		   '<>' => sub { push @extraParams, $_[0] },
+		   'whine=i', 'format=s', 'query=s', 'setting=s', 'results=i', 'tunebook=s') ) {
+    death(undef, 1, 0);
+  } elsif ($options{help}) {
+    death(undef, 0, 2, \*STDOUT);
+  } elsif ($options{version}) {
+    print "v$VERSION\n";
+    exit 0;
+  }
+
+  death("missing -f option", 1, 0) unless exists $options{format};
+  death("must provide at least one tune ID", 1, 0) if ((! exists $options{query}) && $#extraParams == -1);
+
+  return (\%options, \@extraParams);
+}
+
+sub sendToTunebook {
+  use LWP::UserAgent;
+  my ($tunebookUrl, $abcStruct) = @_;
+  my $browser = LWP::UserAgent->new;
+  my $res = $browser->post
+    ($tunebookUrl . '/upload.html',
+     [ 'name' => $abcStruct->{raw} . "\n", ],
+     'Content_Type' => 'form-data',
+    );
+
+  death($res->status_line) unless ($res->is_success);
+
+  $_ = $res->content;
+  death("tune failed to be imported to Tunebook") unless (/Successfully imported/m);
+}
+
+##
+# Main entry point.
+# params:
+#   $options - hash reference of each long option (keys) to their
+#              command line values
+#   $params - an array reference of all options given on the command
+#             line; these are the remainder string tokens not
+#             interpreted as options
+sub main {
+  my ($options, $params) = @_;
+  my ($search, $format) = ($options->{query}, $options->{format});
+  my @urls;
+
+  $OPS = $options;
+
+  if (defined $search) {
+    @urls = getIdsByTitle($search);
+    @urls = map { formatSessionURL($_) } @urls;
+    lg("found " . scalar(@urls) . " tunes/settings");
+    if (exists $options->{results}) {
+      @urls = splice(@urls, 0, $options->{results});
+    }
+  } else {
+    @urls = map { formatSessionURL($_) } @$params;
+  }
+
+  #print "URLS:\n", join("\n", @urls), "\n";
+  #exit 0;
+
+  for my $url (@urls) {
+    my $abcStruct = fetchFromSessionByURL($url, $options->{setting});
+
+    #print "FORMAST: $format\n";
+
+    if ($options->{tunebook}) {
+      sendToTunebook($options->{tunebook}, $abcStruct);
+      #print $abcStruct->{raw}, "\n";
+    } elsif ($format eq 'xml') {
+      my $doc = createXML($abcStruct);
+      print $doc->toString(1);
+    } elsif ($format eq 'text') {
+      print join("\n", $abcStruct->{abc_obj}->print_song_summary(1)), "\n";
+    } elsif ($format eq 'tab') {
+      print join("\t", map { $abcStruct->{$_} } qw(display-name type key)), "\t${url}\n";
+    } elsif ($format eq 'abc') {
+      print $abcStruct->{raw}, "\n";
+    } else {
+      death("undefined format: $format", 1, 1);
+    }
+  }
+}
+
+main(parseOptions());
+
+
+## lib functions
+
+## Exit the program with an error message (goes to standard error).
+#
+# params:
+#    $errrorMsg - string message to print
+#    $exitVal - exit code to return from the program
+#    $verbose - if given (defined), print usage inforomation at that POD
+#               verbosity level
+sub death {
+  my ($errorMsg, $exitVal, $verbose) = @_;
+
+  $exitVal = 1 if (! defined $exitVal);
+
+  if (defined $verbose) {
+    my $h = $exitVal ? \*STDERR : \*STDOUT;
+    if (defined $errorMsg) {
+      pod2usage( { -message => "$PROG: $errorMsg",
+		   -exitval => $exitVal,
+		   -verbose => $verbose,
+		   -output  => \*STDOUT } );
+    } else {
+      pod2usage( { -exitval => $exitVal,
+		   -verbose => $verbose,
+		   -output  => \*STDOUT } );
+    }
+  } else {
+    print STDOUT "$PROG: $errorMsg\n";
+  }
+
+  exit $exitVal;
+}
+
+sub lg {
+  my ($msg, $level) = @_;
+  my $options = $OPS;
+  $level = $level || 1;
+  if ($options->{whine} >= $level) {
+    print $msg, "\n";
+  }
+}
+
+
+__END__
+
+=head1 NAME
+
+scrapesession - scrape ABC info from the session.org.
+
+
+=head1 SYNOPSIS
+
+  scrapesession [ -h/--help ] [ -v/--version ]
+
+  scrapesession < -f/--format <format> > [ -r/--results <number> ]
+                <tune ID> [<tune ID2>] ...
+
+  scrapesession < -t/--tunebook <URL> > [ -r/--results <number> ]
+                <tune ID> [<tune ID2>] ...
+
+  scrapesession < -f/--format <format> > [ -r/--results <number> ]
+                < -q/--query <tune title> >
+
+
+=head1 DESCRIPTION
+
+B<scrapesession> will scrape ABC info from the session.org.  The C<tune ID> is
+the tune number, which seems to be an arbitrary but unique number associated
+with the tune.  If the C<tune ID> is absent, you must supple C<-s>.
+
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-q, --query I<tune title>>
+
+Search for I<tune title> and print everything found.
+
+=item B<-r, --results I<number>>
+
+The number of results to return.  If not given, return all.
+
+=item B<-s, --setting I<setting ID>>
+
+Specify a particular settings ID (find with I<-q>).
+
+=item B<-f, --format I<format name>>
+
+Use I<format name> to format the output of the ABC tune entry.  I<format name>
+is one of the following:
+
+=over 6
+
+=item I<abc>
+
+The raw unadulterated ABC file.
+
+=item I<xml>
+
+Simple XML format with the keys used in:
+
+  http://abcnotation.com/abc2mtex/abc.txt
+
+=item I<text>
+
+Human (more or less) readable reprentation of the ABC.
+
+=item I<tab>
+
+Tab delimited line in the form:
+
+  <title> <type> <key>
+
+=back
+
+The default is I<tab>.
+
+=item -B<-t, --tunebook> I<url>
+
+Download the ABC from I<thesession.org> and then upload to the "Tunebook
+Application" iPhone application.  The form request started by the Tunebook web
+server is sent to I<url>.
+
+=item B<-h, --help>
+
+Print a brief help message and exits.
+
+=item B<-v, --version>
+
+Prints program version and exists.
+
+=item B<-w, --whine> <I<level>>
+
+Degree at which to complain or be verbose.  The higher the level the more the
+proram whines.  Value range is currently C<0 - 2>, where as 0 doesn't output
+anything.  This defaults to 0.
+
+=back
+
+
+=head1 EXAMPLES
+
+Download all ABC records from I<thesession.org> in the space separated list in
+file C<abc-ids.txt> and upload them to the iPhone at address C<iphone.dmz.lop>
+running the I<Tunebook> application's web server.
+
+  scrapesession -t http://iphone.dmz.lop:51679 `cat abc-ids.txt`
+
+
+=head1 COPYRIGHT
+
+Copyright (C) 2010 Paul Landes
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; see the file COPYING.  If not, write to the
+Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+Boston, MA 02111-1307, USA.
+
+=head1 AUTHOR
+
+Paul Landes <paullandes at airpost dot net>
+
+=cut
